@@ -2,6 +2,8 @@
 
 ioBroker plugin for mDNS/Bonjour service advertisement. Makes any adapter auto-discoverable on the local network.
 
+Uses [@homebridge/ciao](https://github.com/homebridge/ciao) — a RFC 6762/6763 compliant mDNS responder that passes Apple's Bonjour Conformance Test.
+
 ## Installation
 
 Add to your adapter's `package.json`:

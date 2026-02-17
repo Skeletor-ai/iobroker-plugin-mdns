@@ -1,5 +1,5 @@
 import { PluginBase } from '@iobroker/plugin-base';
-import type { Bonjour, Service } from 'bonjour-service';
+import type { CiaoService, Responder } from '@homebridge/ciao';
 import os from 'os';
 
 /**
@@ -51,8 +51,8 @@ interface MdnsPluginConfig {
 }
 
 class MdnsPlugin extends PluginBase {
-    private bonjour: Bonjour | null = null;
-    private service: Service | null = null;
+    private responder: Responder | null = null;
+    private service: CiaoService | null = null;
 
     /**
      * Initialize and publish the mDNS service.
@@ -91,17 +91,19 @@ class MdnsPlugin extends PluginBase {
             ...(pluginConfig.txt || {}),
         };
 
-        // Publish
+        // Publish via @homebridge/ciao (RFC 6762/6763 compliant)
         try {
-            const { Bonjour: BonjourService } = await import('bonjour-service');
-            this.bonjour = new BonjourService();
+            const ciao = await import('@homebridge/ciao');
+            this.responder = ciao.getResponder();
 
-            this.service = this.bonjour.publish({
+            this.service = this.responder.createService({
                 name: serviceName,
                 type: serviceType,
                 port: port,
                 txt: txt,
             });
+
+            await this.service.advertise();
 
             this.log.info(`mDNS service published: _${serviceType}._tcp on port ${port} as "${serviceName}"`);
         } catch (err: any) {
@@ -110,26 +112,25 @@ class MdnsPlugin extends PluginBase {
     }
 
     /**
-     * Clean up: unpublish service and destroy bonjour instance.
+     * Clean up: unpublish service and shutdown responder.
      */
     async destroy(): Promise<boolean> {
         if (this.service) {
             try {
-                this.service.stop?.();
+                await this.service.end();
             } catch (_) {
                 // ignore
             }
             this.service = null;
         }
 
-        if (this.bonjour) {
+        if (this.responder) {
             try {
-                this.bonjour.unpublishAll();
-                this.bonjour.destroy();
+                await this.responder.shutdown();
             } catch (_) {
                 // ignore
             }
-            this.bonjour = null;
+            this.responder = null;
         }
 
         this.log.debug('mDNS plugin destroyed');
@@ -151,7 +152,6 @@ class MdnsPlugin extends PluginBase {
      */
     private getPortFromConfig(portKey: string): number | undefined {
         try {
-            // parentIoPackage contains the instance config when running in adapter scope
             const native = (this.parentIoPackage as any)?.native;
             if (native && typeof native[portKey] === 'number') {
                 return native[portKey];
